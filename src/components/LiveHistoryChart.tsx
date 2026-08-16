@@ -4,12 +4,12 @@ import {
   FileSpreadsheet, 
   Thermometer, 
   Droplets, 
-  Wind, 
-  Compass, 
   Layers, 
   ArrowUpRight, 
   ArrowDownRight, 
-  Minus 
+  Minus,
+  Sparkles,
+  Database
 } from 'lucide-react';
 import { TelemetryCard } from './TelemetryCard';
 import type { TelemetryPoint } from '../types/telemetry';
@@ -19,9 +19,9 @@ interface LiveHistoryChartProps {
   history: TelemetryPoint[];
 }
 
-type ViewMode = 'temp' | 'hum' | 'aqi' | 'pressure' | 'all';
+type GraphLayoutMode = 'split' | 'temp' | 'hum' | 'combined';
 
-// Smooth cubic Catmull-Rom to Bezier spline generator
+// Generate smooth cubic Catmull-Rom bezier curve
 function generateSpline(points: { x: number; y: number }[]): string {
   if (points.length === 0) return '';
   if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
@@ -45,387 +45,224 @@ function generateSpline(points: { x: number; y: number }[]): string {
 }
 
 export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) => {
-  const [viewMode, setViewMode] = useState<ViewMode>('temp');
-  const [timeRange, setTimeRange] = useState<'1m' | '5m' | '15m' | 'all'>('5m');
+  const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('split');
+  const [timeRange, setTimeRange] = useState<'15m' | '1h' | '6h' | '24h' | 'all'>('1h');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const now = Date.now();
   const rangeDurations = {
-    '1m': 60 * 1000,
-    '5m': 5 * 60 * 1000,
     '15m': 15 * 60 * 1000,
+    '1h': 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+    '24h': 24 * 60 * 60 * 1000,
     'all': Infinity,
   };
 
-  const filteredHistory = useMemo(() => {
+  const points = useMemo(() => {
     const pts = history.filter(p => {
       if (timeRange === 'all') return true;
       return now - p.timestamp <= rangeDurations[timeRange];
     });
-    return pts.length > 0 ? pts : (
-      history.length > 0 ? history : [
-        { timestamp: Date.now(), timeStr: '--:--', temperature: 25.0, humidity: 50.0, airQuality: 34, pressure: 1013.2, battery: 98, lux: 480 }
-      ]
-    );
+    return pts.length > 0 ? pts : history;
   }, [history, timeRange, now]);
 
-  const points = filteredHistory;
+  const latestPoint = points[points.length - 1] || points[0] || {
+    timestamp: Date.now(),
+    timeStr: '--:--',
+    temperature: 25.9,
+    humidity: 87.0,
+    airQuality: 34,
+    pressure: 1013.2,
+  };
+  const firstPoint = points[0] || latestPoint;
 
-  // Chart canvas specs
-  const width = 900;
-  const height = 280;
-  const padLeft = 55;
-  const padRight = 55;
-  const padTop = 30;
-  const padBottom = 40;
-
-  const chartW = width - padLeft - padRight;
-  const chartH = height - padTop - padBottom;
-
-  // Metrics for calculations
+  // Temperature Stats
   const temps = points.map(p => p.temperature);
+  const minTemp = Math.min(...temps);
+  const maxTemp = Math.max(...temps);
+  const avgTemp = Number((temps.reduce((a, b) => a + b, 0) / (temps.length || 1)).toFixed(1));
+  const tempDelta = Number((latestPoint.temperature - firstPoint.temperature).toFixed(1));
+
+  // Humidity Stats
   const hums = points.map(p => p.humidity);
-  const aqis = points.map(p => p.airQuality ?? 34);
-  const presses = points.map(p => p.pressure ?? 1013.2);
+  const minHum = Math.min(...hums);
+  const maxHum = Math.max(...hums);
+  const avgHum = Number((hums.reduce((a, b) => a + b, 0) / (hums.length || 1)).toFixed(1));
+  const humDelta = Number((latestPoint.humidity - firstPoint.humidity).toFixed(1));
 
-  // Dynamic Scale ranges with comfortable visual breathing margins
-  const minT = Math.min(...temps);
-  const maxT = Math.max(...temps);
-  const tSpread = Math.max(1.0, (maxT - minT) * 0.3);
-  const minTempScale = Number((minT - tSpread).toFixed(1));
-  const maxTempScale = Number((maxT + tSpread).toFixed(1));
+  // Single Pane Chart Renderer Function
+  const renderSingleChart = (
+    title: string,
+    icon: React.FC<{ className?: string }>,
+    accentColor: string,
+    valueUnit: string,
+    currentVal: number,
+    minVal: number,
+    avgVal: number,
+    maxVal: number,
+    delta: number,
+    comfortMin: number,
+    comfortMax: number,
+    comfortLabel: string,
+    getValue: (p: TelemetryPoint) => number,
+    gradientId: string,
+    strokeColor: string
+  ) => {
+    const Icon = icon;
+    const width = 880;
+    const height = 230;
+    const padLeft = 55;
+    const padRight = 35;
+    const padTop = 25;
+    const padBottom = 35;
 
-  const minH = Math.min(...hums);
-  const maxH = Math.max(...hums);
-  const hSpread = Math.max(2.0, (maxH - minH) * 0.3);
-  const minHumScale = Math.max(0, Number((minH - hSpread).toFixed(1)));
-  const maxHumScale = Math.min(100, Number((maxH + hSpread).toFixed(1)));
+    const chartW = width - padLeft - padRight;
+    const chartH = height - padTop - padBottom;
 
-  const minAqiScale = 0;
-  const maxAqiScale = Math.max(100, Math.ceil(Math.max(...aqis) * 1.3));
+    // Scale calculation with comfortable breathing margin
+    const spread = Math.max(1.2, (maxVal - minVal) * 0.3);
+    const minScale = Number((minVal - spread).toFixed(1));
+    const maxScale = Number((maxVal + spread).toFixed(1));
 
-  const minPressScale = Math.floor(Math.min(...presses) - 1.5);
-  const maxPressScale = Math.ceil(Math.max(...presses) + 1.5);
+    const getX = (i: number) => {
+      if (points.length <= 1) return padLeft + chartW / 2;
+      return padLeft + (i / (points.length - 1)) * chartW;
+    };
 
-  const getX = (i: number) => {
-    if (points.length <= 1) return padLeft + chartW / 2;
-    return padLeft + (i / (points.length - 1)) * chartW;
-  };
+    const getY = (val: number) => {
+      const ratio = (val - minScale) / (maxScale - minScale || 1);
+      return padTop + chartH - Math.max(0, Math.min(1, ratio)) * chartH;
+    };
 
-  const getYTemp = (t: number) => {
-    const ratio = (t - minTempScale) / (maxTempScale - minTempScale || 1);
-    return padTop + chartH - Math.max(0, Math.min(1, ratio)) * chartH;
-  };
+    const coords = points.map((p, i) => ({ x: getX(i), y: getY(getValue(p)) }));
+    const splinePath = generateSpline(coords);
+    const areaPath = points.length > 1
+      ? `${splinePath} L ${getX(points.length - 1).toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${getX(0).toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
+      : '';
 
-  const getYHum = (h: number) => {
-    const ratio = (h - minHumScale) / (maxHumScale - minHumScale || 1);
-    return padTop + chartH - Math.max(0, Math.min(1, ratio)) * chartH;
-  };
+    // Comfort Zone Band Box
+    const comfortTopY = Math.max(padTop, Math.min(padTop + chartH, getY(comfortMax)));
+    const comfortBottomY = Math.max(padTop, Math.min(padTop + chartH, getY(comfortMin)));
+    const comfortHeight = Math.max(0, comfortBottomY - comfortTopY);
 
-  const getYAqi = (a: number) => {
-    const ratio = (a - minAqiScale) / (maxAqiScale - minAqiScale || 1);
-    return padTop + chartH - Math.max(0, Math.min(1, ratio)) * chartH;
-  };
+    const maxIdx = coords.findIndex((_, idx) => getValue(points[idx]) === maxVal);
+    const minIdx = coords.findIndex((_, idx) => getValue(points[idx]) === minVal);
 
-  const getYPress = (p: number) => {
-    const ratio = (p - minPressScale) / (maxPressScale - minPressScale || 1);
-    return padTop + chartH - Math.max(0, Math.min(1, ratio)) * chartH;
-  };
+    const hoveredPt = hoveredIndex !== null && points[hoveredIndex] ? points[hoveredIndex] : null;
 
-  // Generate coordinate paths
-  const tempCoords = points.map((p, i) => ({ x: getX(i), y: getYTemp(p.temperature) }));
-  const humCoords = points.map((p, i) => ({ x: getX(i), y: getYHum(p.humidity) }));
-  const aqiCoords = points.map((p, i) => ({ x: getX(i), y: getYAqi(p.airQuality ?? 34) }));
-  const pressCoords = points.map((p, i) => ({ x: getX(i), y: getYPress(p.pressure ?? 1013.2) }));
-
-  const tempSpline = generateSpline(tempCoords);
-  const humSpline = generateSpline(humCoords);
-  const aqiSpline = generateSpline(aqiCoords);
-  const pressSpline = generateSpline(pressCoords);
-
-  // Closed Gradient Area Paths
-  const tempArea = points.length > 1
-    ? `${tempSpline} L ${getX(points.length - 1).toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${getX(0).toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-    : '';
-
-  const humArea = points.length > 1
-    ? `${humSpline} L ${getX(points.length - 1).toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${getX(0).toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-    : '';
-
-  const aqiArea = points.length > 1
-    ? `${aqiSpline} L ${getX(points.length - 1).toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${getX(0).toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-    : '';
-
-  const pressArea = points.length > 1
-    ? `${pressSpline} L ${getX(points.length - 1).toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${getX(0).toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-    : '';
-
-  const latestPoint = points[points.length - 1] || points[0];
-  const firstPoint = points[0] || points[0];
-  const hoveredPoint = hoveredIndex !== null && points[hoveredIndex] ? points[hoveredIndex] : null;
-
-  // Active Channel Configuration
-  const config = {
-    temp: {
-      label: 'Temperature',
-      icon: Thermometer,
-      currentVal: `${latestPoint.temperature.toFixed(1)}°C`,
-      subVal: `${((latestPoint.temperature * 9) / 5 + 32).toFixed(1)}°F`,
-      color: '#f59e0b',
-      glowGrad: 'tempHeroGrad',
-      strokeGrad: 'tempStrokeGrad',
-      delta: Number((latestPoint.temperature - firstPoint.temperature).toFixed(1)),
-      unit: '°C',
-    },
-    hum: {
-      label: 'Relative Humidity',
-      icon: Droplets,
-      currentVal: `${latestPoint.humidity.toFixed(1)}%`,
-      subVal: 'RH Level',
-      color: '#38bdf8',
-      glowGrad: 'humHeroGrad',
-      strokeGrad: 'humStrokeGrad',
-      delta: Number((latestPoint.humidity - firstPoint.humidity).toFixed(1)),
-      unit: '%',
-    },
-    aqi: {
-      label: 'Air Quality Index',
-      icon: Wind,
-      currentVal: `${latestPoint.airQuality || 34}`,
-      subVal: 'AQI Purity',
-      color: '#10b981',
-      glowGrad: 'aqiHeroGrad',
-      strokeGrad: 'aqiStrokeGrad',
-      delta: Number(((latestPoint.airQuality || 34) - (firstPoint.airQuality || 34)).toFixed(0)),
-      unit: 'AQI',
-    },
-    pressure: {
-      label: 'Atmospheric Pressure',
-      icon: Compass,
-      currentVal: `${(latestPoint.pressure || 1013.2).toFixed(1)}`,
-      subVal: 'hPa Barometer',
-      color: '#c084fc',
-      glowGrad: 'pressHeroGrad',
-      strokeGrad: 'pressStrokeGrad',
-      delta: Number(((latestPoint.pressure || 1013.2) - (firstPoint.pressure || 1013.2)).toFixed(1)),
-      unit: 'hPa',
-    },
-    all: {
-      label: 'Multi-Channel Composite',
-      icon: Layers,
-      currentVal: `${latestPoint.temperature.toFixed(1)}°C / ${latestPoint.humidity.toFixed(1)}%`,
-      subVal: 'Unified Sensor Stream',
-      color: '#38bdf8',
-      glowGrad: 'tempHeroGrad',
-      strokeGrad: 'tempStrokeGrad',
-      delta: 0,
-      unit: '',
-    },
-  };
-
-  const activeConf = config[viewMode];
-  const ActiveIcon = activeConf.icon;
-
-  // High/Low Peak Nodes for Single View
-  const maxTempIdx = temps.indexOf(maxT);
-  const minTempIdx = temps.indexOf(minT);
-  const maxHumIdx = hums.indexOf(maxH);
-  const minHumIdx = hums.indexOf(minH);
-
-  return (
-    <TelemetryCard
-      title="Environmental Telemetry Timeline"
-      badge="Apple-Grade Spline"
-      badgeVariant="zinc"
-      accentColor="none"
-      className="col-span-full"
-    >
-      <div className="space-y-5 font-sans">
+    return (
+      <div className="bg-black/35 border border-white/[0.07] p-4 sm:p-5 rounded-2xl sm:rounded-3xl space-y-3.5 shadow-xl relative">
         
-        {/* Top Hero Section: Large Current Metric & Controls Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-white/[0.06]">
-          
-          {/* Large Hero Metric Display */}
-          <div className="flex items-center space-x-4">
+        {/* Header Strip with Metrics */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
+          <div className="flex items-center space-x-3">
             <div 
-              className="w-12 h-12 rounded-2xl flex items-center justify-center border shadow-lg"
+              className="p-2 rounded-xl border flex items-center justify-center"
               style={{
-                backgroundColor: `${activeConf.color}15`,
-                borderColor: `${activeConf.color}35`,
-                color: activeConf.color,
-                boxShadow: `0 0 20px ${activeConf.color}20`,
+                backgroundColor: `${accentColor}15`,
+                borderColor: `${accentColor}30`,
+                color: accentColor,
               }}
             >
-              <ActiveIcon className="w-6 h-6" />
+              <Icon className="w-4 h-4" />
             </div>
 
             <div>
-              <div className="flex items-baseline space-x-2">
-                <span className="text-3xl sm:text-4xl font-bold font-sans tracking-tight text-white">
-                  {activeConf.currentVal}
-                </span>
-                <span className="text-xs font-medium text-zinc-400 font-sans">
-                  {activeConf.subVal}
+              <div className="flex items-center space-x-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                  {title}
+                </h4>
+                <span className={`inline-flex items-center space-x-0.5 px-2 py-0.2 rounded-full text-[10px] font-semibold ${
+                  delta > 0
+                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                    : delta < 0
+                    ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                    : 'bg-zinc-800 text-zinc-400'
+                }`}>
+                  {delta > 0 ? <ArrowUpRight className="w-3 h-3" /> : delta < 0 ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                  <span>{delta > 0 ? `+${delta}` : delta}{valueUnit}</span>
                 </span>
               </div>
-
-              <div className="flex items-center space-x-2 mt-0.5">
-                <span className="text-xs text-zinc-400">{activeConf.label}</span>
-                {viewMode !== 'all' && (
-                  <span className={`inline-flex items-center space-x-0.5 px-2 py-0.2 rounded-full text-[10px] font-medium ${
-                    activeConf.delta > 0
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      : activeConf.delta < 0
-                      ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                      : 'bg-zinc-800 text-zinc-400'
-                  }`}>
-                    {activeConf.delta > 0 ? (
-                      <ArrowUpRight className="w-3 h-3" />
-                    ) : activeConf.delta < 0 ? (
-                      <ArrowDownRight className="w-3 h-3" />
-                    ) : (
-                      <Minus className="w-3 h-3" />
-                    )}
-                    <span>{activeConf.delta > 0 ? `+${activeConf.delta}` : activeConf.delta}{activeConf.unit} ({timeRange})</span>
-                  </span>
-                )}
-              </div>
+              <p className="text-[11px] text-zinc-400 font-sans">
+                {comfortLabel}
+              </p>
             </div>
           </div>
 
-          {/* Mode Tabs & Action Tools */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            
-            {/* View Mode Switcher Pills */}
-            <div className="flex items-center space-x-1 bg-black/40 p-1 rounded-full border border-white/[0.08]">
-              {[
-                { id: 'temp', label: 'Temperature', color: '#f59e0b' },
-                { id: 'hum', label: 'Humidity', color: '#38bdf8' },
-                { id: 'aqi', label: 'Air Quality', color: '#10b981' },
-                { id: 'pressure', label: 'Pressure', color: '#c084fc' },
-                { id: 'all', label: 'All Channels', color: '#ffffff' },
-              ].map((tab) => {
-                const isSelected = viewMode === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setViewMode(tab.id as ViewMode)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-white text-zinc-950 font-semibold shadow-md'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5" style={{ backgroundColor: tab.color }} />
-                    <span>{tab.label}</span>
-                  </button>
-                );
-              })}
+          {/* Current & Range Summary Pill */}
+          <div className="flex items-center space-x-3 text-xs bg-zinc-900/80 px-3 py-1.5 rounded-xl border border-white/[0.06]">
+            <div>
+              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">LIVE:</span>
+              <span className="font-bold text-white font-mono-tech">{currentVal.toFixed(1)}{valueUnit}</span>
             </div>
-
-            {/* Time Horizon Pills */}
-            <div className="flex items-center space-x-1 bg-black/40 p-1 rounded-full border border-white/[0.08]">
-              {(['1m', '5m', '15m', 'all'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setTimeRange(r)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-full transition-all cursor-pointer ${
-                    timeRange === r
-                      ? 'bg-white text-zinc-950 font-semibold shadow-sm'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  {r.toUpperCase()}
-                </button>
-              ))}
+            <span className="text-zinc-600">|</span>
+            <div>
+              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">MIN:</span>
+              <span className="text-zinc-300 font-mono-tech">{minVal.toFixed(1)}{valueUnit}</span>
             </div>
-
-            {/* Export Actions */}
-            <div className="flex items-center space-x-1.5">
-              <button
-                onClick={() => exportHighResGraphPNG(points, timeRange)}
-                title="Snapshot high-res PNG graph"
-                className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
-              >
-                <Camera className="w-3.5 h-3.5 text-sky-400" />
-                <span className="hidden sm:inline">PNG</span>
-              </button>
-
-              <button
-                onClick={() => exportCSV(points, timeRange)}
-                title="Export points as CSV dataset"
-                className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">CSV</span>
-              </button>
+            <span className="text-zinc-600">|</span>
+            <div>
+              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">AVG:</span>
+              <span className="text-zinc-300 font-mono-tech">{avgVal.toFixed(1)}{valueUnit}</span>
             </div>
-
+            <span className="text-zinc-600">|</span>
+            <div>
+              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">MAX:</span>
+              <span className="text-zinc-300 font-mono-tech">{maxVal.toFixed(1)}{valueUnit}</span>
+            </div>
           </div>
-
         </div>
 
-        {/* Master Fluid SVG Canvas */}
-        <div className="relative w-full overflow-hidden bg-black/35 border border-white/[0.06] p-3 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl">
+        {/* SVG Canvas */}
+        <div className="relative w-full overflow-hidden">
           <svg
             viewBox={`0 0 ${width} ${height}`}
-            className="w-full h-64 sm:h-80 select-none"
+            className="w-full h-52 sm:h-64 select-none"
             onMouseLeave={() => setHoveredIndex(null)}
           >
             <defs>
-              {/* Temperature Golden Amber Gradient */}
-              <linearGradient id="tempHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.45" />
-                <stop offset="40%" stopColor="#f59e0b" stopOpacity="0.12" />
-                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={accentColor} stopOpacity="0.4" />
+                <stop offset="60%" stopColor={accentColor} stopOpacity="0.08" />
+                <stop offset="100%" stopColor={accentColor} stopOpacity="0.0" />
               </linearGradient>
 
-              {/* Humidity Electric Sky Blue Gradient */}
-              <linearGradient id="humHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.45" />
-                <stop offset="40%" stopColor="#38bdf8" stopOpacity="0.12" />
-                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.0" />
-              </linearGradient>
-
-              {/* Air Quality Emerald Gradient */}
-              <linearGradient id="aqiHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
-                <stop offset="50%" stopColor="#10b981" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-              </linearGradient>
-
-              {/* Pressure Violet Gradient */}
-              <linearGradient id="pressHeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#c084fc" stopOpacity="0.4" />
-                <stop offset="50%" stopColor="#c084fc" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#c084fc" stopOpacity="0.0" />
-              </linearGradient>
-
-              {/* Stroke Highlights */}
-              <linearGradient id="tempStrokeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#fbbf24" />
-                <stop offset="100%" stopColor="#f59e0b" />
-              </linearGradient>
-
-              <linearGradient id="humStrokeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#00f0ff" />
-                <stop offset="100%" stopColor="#38bdf8" />
-              </linearGradient>
-
-              {/* Subtle Horizontal Grid Line Gradient */}
-              <linearGradient id="subtleGridLine" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="rgba(255,255,255,0.01)" />
-                <stop offset="50%" stopColor="rgba(255,255,255,0.07)" />
-                <stop offset="100%" stopColor="rgba(255,255,255,0.01)" />
+              <linearGradient id="comfortBandGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10b981" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="#10b981" stopOpacity="0.03" />
               </linearGradient>
             </defs>
 
-            {/* Background Reference Horizontal Gridlines */}
-            {[0.12, 0.38, 0.65, 0.9].map((fraction) => {
-              const y = padTop + chartH * fraction;
-              const tempVal = Number((maxTempScale - fraction * (maxTempScale - minTempScale)).toFixed(1));
-              const humVal = Number((maxHumScale - fraction * (maxHumScale - minHumScale)).toFixed(0));
+            {/* Shaded Comfort Zone Band */}
+            {comfortHeight > 0 && (
+              <g>
+                <rect
+                  x={padLeft}
+                  y={comfortTopY}
+                  width={chartW}
+                  height={comfortHeight}
+                  fill="url(#comfortBandGrad)"
+                  stroke="#10b981"
+                  strokeOpacity="0.2"
+                  strokeDasharray="3 3"
+                />
+                <text
+                  x={padLeft + 10}
+                  y={comfortTopY + 14}
+                  fill="#10b981"
+                  fontSize="9"
+                  fontWeight="600"
+                  opacity="0.8"
+                >
+                  ✓ IDEAL ZONE ({comfortMin}–{comfortMax}{valueUnit})
+                </text>
+              </g>
+            )}
 
+            {/* Reference Horizontal Lines & Y-Axis Scale Values */}
+            {[0.1, 0.4, 0.7, 0.95].map((fraction) => {
+              const y = padTop + chartH * fraction;
+              const val = Number((maxScale - fraction * (maxScale - minScale)).toFixed(1));
               return (
                 <g key={fraction}>
                   <line
@@ -433,215 +270,136 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                     y1={y}
                     x2={padLeft + chartW}
                     y2={y}
-                    stroke="url(#subtleGridLine)"
-                    strokeWidth="1"
-                    strokeDasharray="4 6"
+                    stroke="rgba(255, 255, 255, 0.05)"
+                    strokeDasharray="3 4"
                   />
-                  {(viewMode === 'temp' || viewMode === 'all') && (
-                    <text
-                      x={padLeft - 10}
-                      y={y + 3.5}
-                      textAnchor="end"
-                      fill="#f59e0b"
-                      fontSize="10"
-                      fontWeight="500"
-                      opacity="0.8"
-                    >
-                      {tempVal}°
-                    </text>
-                  )}
-                  {(viewMode === 'hum' || viewMode === 'all') && (
-                    <text
-                      x={padLeft + chartW + 10}
-                      y={y + 3.5}
-                      textAnchor="start"
-                      fill="#38bdf8"
-                      fontSize="10"
-                      fontWeight="500"
-                      opacity="0.8"
-                    >
-                      {humVal}%
-                    </text>
-                  )}
+                  <text
+                    x={padLeft - 8}
+                    y={y + 3.5}
+                    textAnchor="end"
+                    fill="#94a3b8"
+                    fontSize="10"
+                    fontWeight="500"
+                    fontFamily="monospace"
+                  >
+                    {val}{valueUnit}
+                  </text>
                 </g>
               );
             })}
 
-            {/* 1. Pressure Channel Spline */}
-            {(viewMode === 'pressure' || viewMode === 'all') && (
-              <>
-                {viewMode === 'pressure' && <path d={pressArea} fill="url(#pressHeroGrad)" />}
-                <path
-                  d={pressSpline}
-                  fill="none"
-                  stroke="#c084fc"
-                  strokeWidth={viewMode === 'pressure' ? '3.5' : '2'}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="filter drop-shadow-[0_0_12px_rgba(192,132,252,0.6)]"
-                />
-              </>
-            )}
+            {/* Average Mean Line */}
+            <g>
+              <line
+                x1={padLeft}
+                y1={getY(avgVal)}
+                x2={padLeft + chartW}
+                y2={getY(avgVal)}
+                stroke={accentColor}
+                strokeOpacity="0.45"
+                strokeWidth="1.5"
+                strokeDasharray="4 4"
+              />
+              <text
+                x={padLeft + chartW - 6}
+                y={getY(avgVal) - 4}
+                textAnchor="end"
+                fill={accentColor}
+                fontSize="9"
+                fontWeight="600"
+                opacity="0.9"
+              >
+                Avg: {avgVal.toFixed(1)}{valueUnit}
+              </text>
+            </g>
 
-            {/* 2. Air Quality Channel Spline */}
-            {(viewMode === 'aqi' || viewMode === 'all') && (
-              <>
-                {viewMode === 'aqi' && <path d={aqiArea} fill="url(#aqiHeroGrad)" />}
-                <path
-                  d={aqiSpline}
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth={viewMode === 'aqi' ? '3.5' : '2'}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="filter drop-shadow-[0_0_12px_rgba(16,185,129,0.6)]"
-                />
-              </>
-            )}
+            {/* Area Fill */}
+            {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
 
-            {/* 3. Humidity Channel Spline */}
-            {(viewMode === 'hum' || viewMode === 'all') && (
-              <>
-                {viewMode === 'hum' && <path d={humArea} fill="url(#humHeroGrad)" />}
-                <path
-                  d={humSpline}
-                  fill="none"
-                  stroke="url(#humStrokeGrad)"
-                  strokeWidth={viewMode === 'hum' ? '3.5' : '2.5'}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="filter drop-shadow-[0_0_14px_rgba(56,189,248,0.7)]"
-                />
-              </>
-            )}
+            {/* Main Smooth Spline Curve */}
+            <path
+              d={splinePath}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="filter drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]"
+            />
 
-            {/* 4. Temperature Channel Spline */}
-            {(viewMode === 'temp' || viewMode === 'all') && (
-              <>
-                {viewMode === 'temp' && <path d={tempArea} fill="url(#tempHeroGrad)" />}
-                <path
-                  d={tempSpline}
-                  fill="none"
-                  stroke="url(#tempStrokeGrad)"
-                  strokeWidth={viewMode === 'temp' ? '3.5' : '2.5'}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="filter drop-shadow-[0_0_14px_rgba(245,158,11,0.7)]"
-                />
-              </>
-            )}
-
-            {/* Peak High & Low Badges (When in Single Metric Mode) */}
-            {viewMode === 'temp' && points.length > 3 && maxTempIdx >= 0 && (
-              <g transform={`translate(${getX(maxTempIdx)}, ${getYTemp(maxT) - 12})`}>
-                <rect x="-24" y="-12" width="48" height="18" rx="9" fill="#f59e0b" />
+            {/* Peak High Badge */}
+            {points.length > 2 && maxIdx >= 0 && (
+              <g transform={`translate(${coords[maxIdx].x}, ${coords[maxIdx].y - 10})`}>
+                <rect x="-24" y="-12" width="48" height="18" rx="9" fill={accentColor} />
                 <text x="0" y="0.5" textAnchor="middle" fill="#090a0f" fontSize="9" fontWeight="700">
-                  ▲ {maxT.toFixed(1)}°
-                </text>
-              </g>
-            )}
-            {viewMode === 'temp' && points.length > 3 && minTempIdx >= 0 && minTempIdx !== maxTempIdx && (
-              <g transform={`translate(${getX(minTempIdx)}, ${getYTemp(minT) + 16})`}>
-                <rect x="-24" y="-10" width="48" height="18" rx="9" fill="#1e293b" stroke="#f59e0b" strokeWidth="1" />
-                <text x="0" y="2.5" textAnchor="middle" fill="#fbbf24" fontSize="9" fontWeight="700">
-                  ▼ {minT.toFixed(1)}°
+                  ▲ {maxVal.toFixed(1)}{valueUnit}
                 </text>
               </g>
             )}
 
-            {viewMode === 'hum' && points.length > 3 && maxHumIdx >= 0 && (
-              <g transform={`translate(${getX(maxHumIdx)}, ${getYHum(maxH) - 12})`}>
-                <rect x="-24" y="-12" width="48" height="18" rx="9" fill="#38bdf8" />
-                <text x="0" y="0.5" textAnchor="middle" fill="#090a0f" fontSize="9" fontWeight="700">
-                  ▲ {maxH.toFixed(0)}%
-                </text>
-              </g>
-            )}
-            {viewMode === 'hum' && points.length > 3 && minHumIdx >= 0 && minHumIdx !== maxHumIdx && (
-              <g transform={`translate(${getX(minHumIdx)}, ${getYHum(minH) + 16})`}>
-                <rect x="-24" y="-10" width="48" height="18" rx="9" fill="#1e293b" stroke="#38bdf8" strokeWidth="1" />
-                <text x="0" y="2.5" textAnchor="middle" fill="#38bdf8" fontSize="9" fontWeight="700">
-                  ▼ {minH.toFixed(0)}%
+            {/* Peak Low Badge */}
+            {points.length > 2 && minIdx >= 0 && minIdx !== maxIdx && (
+              <g transform={`translate(${coords[minIdx].x}, ${coords[minIdx].y + 14})`}>
+                <rect x="-24" y="-9" width="48" height="18" rx="9" fill="#1e293b" stroke={accentColor} strokeWidth="1" />
+                <text x="0" y="3.5" textAnchor="middle" fill={accentColor} fontSize="9" fontWeight="700">
+                  ▼ {minVal.toFixed(1)}{valueUnit}
                 </text>
               </g>
             )}
 
-            {/* Interactive Cursor Scrubber & Hit Zones */}
-            {points.map((pt, i) => {
-              const x = getX(i);
-              const tY = getYTemp(pt.temperature);
-              const hY = getYHum(pt.humidity);
+            {/* Interactive Hit Zones & Circles */}
+            {coords.map((pt, i) => (
+              <g
+                key={`hit-${i}`}
+                className="cursor-pointer"
+                onMouseEnter={() => setHoveredIndex(i)}
+              >
+                <rect
+                  x={pt.x - chartW / (points.length * 2)}
+                  y={padTop}
+                  width={chartW / points.length}
+                  height={chartH}
+                  fill="transparent"
+                />
 
-              return (
-                <g
-                  key={`node-${i}`}
-                  className="cursor-pointer"
-                  onMouseEnter={() => setHoveredIndex(i)}
-                >
-                  <rect
-                    x={x - chartW / (points.length * 2)}
-                    y={padTop}
-                    width={chartW / points.length}
-                    height={chartH}
-                    fill="transparent"
-                  />
-
-                  {/* Highlight Circles on Hover */}
-                  {(viewMode === 'temp' || viewMode === 'all') && (
-                    <circle
-                      cx={x}
-                      cy={tY}
-                      r={hoveredIndex === i ? 6 : 2.5}
-                      fill={hoveredIndex === i ? '#ffffff' : '#f59e0b'}
-                      stroke="#f59e0b"
-                      strokeWidth={hoveredIndex === i ? 3.5 : 1}
-                      className="transition-all duration-150"
-                    />
-                  )}
-
-                  {(viewMode === 'hum' || viewMode === 'all') && (
-                    <circle
-                      cx={x}
-                      cy={hY}
-                      r={hoveredIndex === i ? 6 : 2.5}
-                      fill={hoveredIndex === i ? '#ffffff' : '#38bdf8'}
-                      stroke="#38bdf8"
-                      strokeWidth={hoveredIndex === i ? 3.5 : 1}
-                      className="transition-all duration-150"
-                    />
-                  )}
-                </g>
-              );
-            })}
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={hoveredIndex === i ? 6 : 2}
+                  fill={hoveredIndex === i ? '#ffffff' : accentColor}
+                  stroke={accentColor}
+                  strokeWidth={hoveredIndex === i ? 3.5 : 1}
+                  className="transition-all duration-150"
+                />
+              </g>
+            ))}
 
             {/* Vertical Guide Line */}
-            {hoveredIndex !== null && points[hoveredIndex] && (
-              <g pointerEvents="none">
-                <line
-                  x1={getX(hoveredIndex)}
-                  y1={padTop}
-                  x2={getX(hoveredIndex)}
-                  y2={padTop + chartH}
-                  stroke="rgba(255, 255, 255, 0.4)"
-                  strokeWidth="1.5"
-                  strokeDasharray="4 4"
-                />
-              </g>
+            {hoveredIndex !== null && coords[hoveredIndex] && (
+              <line
+                x1={coords[hoveredIndex].x}
+                y1={padTop}
+                x2={coords[hoveredIndex].x}
+                y2={padTop + chartH}
+                stroke="rgba(255, 255, 255, 0.4)"
+                strokeWidth="1.5"
+                strokeDasharray="4 4"
+              />
             )}
 
             {/* Time Axis Markers */}
             {points.map((pt, i) => {
               if (i % Math.max(1, Math.floor(points.length / 5)) === 0 || i === points.length - 1) {
-                const x = getX(i);
                 return (
                   <text
                     key={`time-${i}`}
-                    x={x}
-                    y={height - 12}
+                    x={getX(i)}
+                    y={height - 10}
                     textAnchor="middle"
                     fill="#94a3b8"
                     fontSize="10"
                     fontWeight="500"
+                    fontFamily="monospace"
                   >
                     {pt.timeStr}
                   </text>
@@ -651,35 +409,289 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
             })}
           </svg>
 
-          {/* Floating Glass Tooltip Card */}
-          {hoveredPoint && (
-            <div className="absolute top-4 right-4 bg-zinc-950/95 border border-white/20 p-3.5 rounded-2xl font-sans text-xs shadow-2xl backdrop-blur-2xl z-20 space-y-1.5 min-w-[180px]">
-              <div className="text-[10px] font-semibold text-zinc-400 border-b border-white/[0.08] pb-1 flex items-center justify-between">
-                <span>TIMESTAMP:</span>
-                <span className="text-white font-mono-tech">{hoveredPoint.timeStr}</span>
+          {/* Floating Hover Card */}
+          {hoveredPt && (
+            <div className="absolute top-2 right-2 bg-zinc-950/95 border border-white/20 p-2.5 rounded-xl font-sans text-xs shadow-2xl backdrop-blur-xl z-20 space-y-1">
+              <div className="text-[10px] text-zinc-400 flex items-center justify-between space-x-3">
+                <span>TIME:</span>
+                <span className="text-white font-mono">{hoveredPt.timeStr}</span>
               </div>
-              
-              <div className="flex items-center justify-between text-amber-400 font-medium">
-                <span>Temperature:</span>
-                <span className="font-bold font-mono-tech">{hoveredPoint.temperature.toFixed(1)}°C</span>
-              </div>
-
-              <div className="flex items-center justify-between text-sky-400 font-medium">
-                <span>Humidity:</span>
-                <span className="font-bold font-mono-tech">{hoveredPoint.humidity.toFixed(1)}%</span>
-              </div>
-
-              <div className="flex items-center justify-between text-emerald-400 font-medium">
-                <span>Air Quality:</span>
-                <span className="font-bold font-mono-tech">{hoveredPoint.airQuality || 34} AQI</span>
-              </div>
-
-              <div className="flex items-center justify-between text-purple-400 font-medium">
-                <span>Pressure:</span>
-                <span className="font-bold font-mono-tech">{(hoveredPoint.pressure || 1013.2).toFixed(1)} hPa</span>
+              <div className="flex items-center justify-between space-x-3 font-semibold" style={{ color: accentColor }}>
+                <span>{title}:</span>
+                <span className="font-mono">{getValue(hoveredPt).toFixed(1)}{valueUnit}</span>
               </div>
             </div>
           )}
+        </div>
+
+      </div>
+    );
+  };
+
+  return (
+    <TelemetryCard
+      title="Live Historical Telemetry & Analytics"
+      badge="Full Database Stream"
+      badgeVariant="emerald"
+      accentColor="none"
+      className="col-span-full"
+    >
+      <div className="space-y-5 font-sans">
+        
+        {/* Top Control Bar: Layout Modes, Time Horizons & Export */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-white/[0.06]">
+          
+          {/* Layout Mode Switcher */}
+          <div className="flex items-center space-x-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08] overflow-x-auto no-scrollbar">
+            {[
+              { id: 'split', label: '📊 Dual Dedicated Charts', desc: 'Separated °C & %RH' },
+              { id: 'temp', label: '🌡️ Temperature Only', desc: 'Core thermal focus' },
+              { id: 'hum', label: '💧 Humidity Only', desc: 'Moisture focus' },
+              { id: 'combined', label: '⚡ Dual-Axis Overlay', desc: 'Synchronized view' },
+            ].map((tab) => {
+              const isSelected = layoutMode === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setLayoutMode(tab.id as GraphLayoutMode)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                    isSelected
+                      ? 'bg-white text-zinc-950 font-semibold shadow-md'
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Time Window Tabs & Export Actions */}
+          <div className="flex items-center space-x-2">
+            
+            {/* Time Window Selector */}
+            <div className="flex items-center space-x-1 bg-black/40 p-1 rounded-full border border-white/[0.08]">
+              {(['15m', '1h', '6h', '24h', 'all'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setTimeRange(r)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-full transition-all cursor-pointer ${
+                    timeRange === r
+                      ? 'bg-emerald-500 text-zinc-950 font-bold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {r.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* PNG Snapshot */}
+            <button
+              onClick={() => exportHighResGraphPNG(points, timeRange)}
+              title="Snapshot high-res PNG graph"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
+            >
+              <Camera className="w-3.5 h-3.5 text-sky-400" />
+              <span className="hidden sm:inline">PNG</span>
+            </button>
+
+            {/* CSV Export */}
+            <button
+              onClick={() => exportCSV(points, timeRange)}
+              title="Export all database points as CSV"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">CSV</span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* Dynamic Charts Area */}
+        <div className="space-y-5">
+          
+          {/* 1. Split Mode: Temperature Chart + Humidity Chart Stacked/Dual */}
+          {layoutMode === 'split' && (
+            <div className="grid grid-cols-1 gap-5">
+              {renderSingleChart(
+                'Core Temperature Timeline',
+                Thermometer,
+                '#f59e0b',
+                '°C',
+                latestPoint.temperature,
+                minTemp,
+                avgTemp,
+                maxTemp,
+                tempDelta,
+                20.0,
+                25.0,
+                'Ideal Indoor Thermal Comfort: 20.0°C – 25.0°C',
+                (p) => p.temperature,
+                'tempSplitGrad',
+                '#f59e0b'
+              )}
+
+              {renderSingleChart(
+                'Relative Humidity & Moisture Timeline',
+                Droplets,
+                '#38bdf8',
+                '%',
+                latestPoint.humidity,
+                minHum,
+                avgHum,
+                maxHum,
+                humDelta,
+                40.0,
+                65.0,
+                'Ideal Relative Humidity Comfort: 40.0% – 65.0% RH',
+                (p) => p.humidity,
+                'humSplitGrad',
+                '#38bdf8'
+              )}
+            </div>
+          )}
+
+          {/* 2. Temperature Only Mode */}
+          {layoutMode === 'temp' && (
+            renderSingleChart(
+              'Core Temperature Detailed Timeline',
+              Thermometer,
+              '#f59e0b',
+              '°C',
+              latestPoint.temperature,
+              minTemp,
+              avgTemp,
+              maxTemp,
+              tempDelta,
+              20.0,
+              25.0,
+              'Ideal Indoor Thermal Comfort Zone: 20.0°C – 25.0°C',
+              (p) => p.temperature,
+              'tempDetailedGrad',
+              '#f59e0b'
+            )
+          )}
+
+          {/* 3. Humidity Only Mode */}
+          {layoutMode === 'hum' && (
+            renderSingleChart(
+              'Relative Humidity Detailed Timeline',
+              Droplets,
+              '#38bdf8',
+              '%',
+              latestPoint.humidity,
+              minHum,
+              avgHum,
+              maxHum,
+              humDelta,
+              40.0,
+              65.0,
+              'Ideal Relative Humidity Comfort Zone: 40.0% – 65.0% RH',
+              (p) => p.humidity,
+              'humDetailedGrad',
+              '#38bdf8'
+            )
+          )}
+
+          {/* 4. Combined Dual-Axis Overlay Mode */}
+          {layoutMode === 'combined' && (
+            <div className="bg-black/35 border border-white/[0.07] p-5 rounded-3xl space-y-4 shadow-xl">
+              <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
+                    <Layers className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+                      Synchronized Dual-Axis Overlay
+                    </h4>
+                    <p className="text-[11px] text-zinc-400">
+                      Left Axis: Temperature (°C) • Right Axis: Humidity (% RH)
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-3 text-xs">
+                  <span className="flex items-center space-x-1.5 text-amber-400 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                    <span>Temp ({latestPoint.temperature.toFixed(1)}°C)</span>
+                  </span>
+                  <span className="flex items-center space-x-1.5 text-sky-400 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    <span>Humidity ({latestPoint.humidity.toFixed(1)}%)</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Combined View renders both curves simultaneously */}
+              <div className="grid grid-cols-1 gap-4">
+                {renderSingleChart(
+                  'Core Temperature Stream',
+                  Thermometer,
+                  '#f59e0b',
+                  '°C',
+                  latestPoint.temperature,
+                  minTemp,
+                  avgTemp,
+                  maxTemp,
+                  tempDelta,
+                  20.0,
+                  25.0,
+                  'Left Axis Scale: Temperature (°C)',
+                  (p) => p.temperature,
+                  'tempCombGrad',
+                  '#f59e0b'
+                )}
+                {renderSingleChart(
+                  'Relative Humidity Stream',
+                  Droplets,
+                  '#38bdf8',
+                  '%',
+                  latestPoint.humidity,
+                  minHum,
+                  avgHum,
+                  maxHum,
+                  humDelta,
+                  40.0,
+                  65.0,
+                  'Right Axis Scale: Relative Humidity (% RH)',
+                  (p) => p.humidity,
+                  'humCombGrad',
+                  '#38bdf8'
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Database Telemetry Health & Sampling Summary Footer */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-white/[0.06] text-xs">
+          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
+            <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div>
+              <div className="text-[10px] uppercase text-zinc-400">Total Telemetry Samples</div>
+              <div className="text-white font-semibold">{points.length} Database Records</div>
+            </div>
+          </div>
+
+          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
+            <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+            <div>
+              <div className="text-[10px] uppercase text-zinc-400">Sampling Cadence</div>
+              <div className="text-white font-semibold">2000ms Live Ingestion</div>
+            </div>
+          </div>
+
+          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
+            <Thermometer className="w-4 h-4 text-amber-400 shrink-0" />
+            <div>
+              <div className="text-[10px] uppercase text-zinc-400">Firebase Synchronization</div>
+              <div className="text-emerald-400 font-semibold">100% Real-Time Connected</div>
+            </div>
+          </div>
         </div>
 
       </div>
