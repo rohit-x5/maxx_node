@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #090a0f;
+    --bg-secondary: #10121a;
+    --card-bg: rgba(18, 21, 31, 0.65);
+    --card-border: rgba(255, 255, 255, 0.08);
+    --card-border-hover: rgba(56, 189, 248, 0.25);
+    --accent-blue: #38bdf8;
+    --accent-emerald: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-rose: #f43f5e;
+    --accent-violet: #a855f7;
+  }
+
+  body {
+    background-color: #08090d;
+    color: #f1f5f9;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, sans-serif;
+    background-image: 
+      radial-gradient(circle at 50% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+      radial-gradient(circle at 100% 60%, rgba(168, 85, 247, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.04) 0%, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Glassmorphism Design Tokens */
+.glass-card {
+  background: rgba(16, 18, 27, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  border-radius: 1.25rem;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 32px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-panel {
+  background: rgba(13, 15, 22, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1.5rem;
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border-radius: 9999px;
+  transition: all 0.2s ease;
+}
+
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Subtle glow effects */
+.glow-blue {
+  box-shadow: 0 0 24px rgba(56, 189, 248, 0.2);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.2);
+}
+
+.glow-amber {
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
+}
+
+/* Monospace & Display typography */
+.font-mono-tech {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+}
+
+.font-display {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+  letter-spacing: -0.03em;
+}
+
+/* Modern Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
