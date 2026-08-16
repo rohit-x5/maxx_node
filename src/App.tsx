@@ -21,9 +21,9 @@ import {
   BarChart3, 
   Cpu, 
   ScrollText,
-  Zap,
   Battery,
-  Wifi
+  Wifi,
+  Sparkles
 } from 'lucide-react';
 
 export default function App() {
@@ -44,9 +44,9 @@ export default function App() {
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
 
   return (
-    <div className="min-h-screen bg-[#08090d] text-zinc-100 flex flex-col selection:bg-sky-500/30 selection:text-sky-300 pb-16 lg:pb-0">
+    <div className="min-h-screen bg-[#07080c] text-zinc-100 flex flex-col selection:bg-sky-500/30 selection:text-sky-300 pb-20 md:pb-0">
       
-      {/* Sleek Minimalist Header */}
+      {/* Minimalist Top Header */}
       <Header
         activeView={activeView}
         setActiveView={setActiveView}
@@ -59,44 +59,39 @@ export default function App() {
         onOpenExportModal={() => setIsExportModalOpen(true)}
       />
 
-      {/* Modern Quick-Status Bar */}
-      <div className="bg-zinc-950/40 border-b border-white/[0.05] px-4 sm:px-8 py-2.5 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center space-x-3 text-zinc-400">
-            <span className="flex items-center space-x-1.5 text-emerald-400 font-medium">
+      {/* Mobile-Friendly Sub-Bar */}
+      <div className="bg-zinc-950/60 border-b border-white/[0.05] px-3 sm:px-8 py-2 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center space-x-2 text-zinc-400">
+            <span className="flex items-center space-x-1.5 text-emerald-400 font-medium text-[11px] sm:text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>DHT11 Active</span>
+              <span>DHT11 Live</span>
             </span>
-            <span className="text-zinc-700">|</span>
-            <span className="flex items-center space-x-1">
-              <Battery className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-zinc-700">•</span>
+            <span className="flex items-center space-x-1 text-[11px] sm:text-xs">
+              <Battery className="w-3 h-3 text-emerald-400" />
               <span>{data.battery ?? 98}%</span>
             </span>
-            <span className="text-zinc-700 hidden sm:inline">|</span>
-            <span className="hidden sm:flex items-center space-x-1">
-              <Wifi className="w-3.5 h-3.5 text-sky-400" />
+            <span className="text-zinc-700 hidden sm:inline">•</span>
+            <span className="hidden sm:flex items-center space-x-1 text-[11px]">
+              <Wifi className="w-3 h-3 text-sky-400" />
               <span>{data.rssi ?? -56} dBm</span>
-            </span>
-            <span className="text-zinc-700 hidden sm:inline">|</span>
-            <span className="hidden sm:flex items-center space-x-1 text-zinc-400">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>{stats.latencyMs}ms RTT</span>
             </span>
           </div>
 
-          <div className="flex items-center space-x-2 text-zinc-400 text-xs">
-            <span>Hardware:</span>
-            <span className="text-zinc-200 font-medium">ESP32-S3 Node</span>
+          <div className="flex items-center space-x-1.5 text-[10px] sm:text-xs text-zinc-400">
+            <Sparkles className="w-3 h-3 text-amber-400 hidden sm:inline" />
+            <span className="text-zinc-300 font-medium">ESP32-S3 Node</span>
           </div>
         </div>
       </div>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6">
         
         {/* VIEW 1: OVERVIEW */}
         {activeView === 'overview' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             
             {/* 1. Target Environment Preset Selector */}
             <section>
@@ -109,7 +104,7 @@ export default function App() {
             </section>
 
             {/* 2. Core 4-Card Sensor Matrix */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
               {/* Temperature */}
               <TemperatureCard
                 temperature={data.temperature}
@@ -169,7 +164,7 @@ export default function App() {
             </section>
 
             {/* 6. Hardware & Stream Diagnostics Grid */}
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
               <DeviceHealthCard
                 data={data}
                 stats={stats}
@@ -189,7 +184,7 @@ export default function App() {
 
         {/* VIEW 2: DEEP ANALYTICS */}
         {activeView === 'analytics' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <section>
               <AdvancedAnalyticsCard
                 temperature={data.temperature}
@@ -216,8 +211,8 @@ export default function App() {
 
         {/* VIEW 3: DEVICE HEALTH */}
         {activeView === 'device' && (
-          <div className="space-y-6">
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="space-y-4 sm:space-y-6">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
               <DeviceHealthCard
                 data={data}
                 stats={stats}
@@ -241,12 +236,12 @@ export default function App() {
 
         {/* VIEW 4: AUDIT STREAM */}
         {activeView === 'logs' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <section>
               <EventLogStream logs={logs} clearLogs={clearLogs} />
             </section>
 
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
               <DiagnosticsCard data={data} stats={stats} />
               <DeviceHealthCard
                 data={data}
@@ -268,63 +263,77 @@ export default function App() {
         currentHum={data.humidity}
       />
 
-      {/* Mobile Bottom Quick-Action Bar */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/90 border-t border-white/10 backdrop-blur-xl px-2 py-2 flex items-center justify-around text-[10px]">
+      {/* iOS-Style Native Mobile Bottom Tab Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/85 backdrop-blur-2xl border-t border-white/[0.08] px-3 py-1.5 flex items-center justify-around shadow-2xl safe-area-bottom">
         <button
           onClick={() => setActiveView('overview')}
-          className={`flex flex-col items-center space-y-0.5 py-1 px-2 ${activeView === 'overview' ? 'text-sky-400 font-semibold' : 'text-zinc-500'}`}
+          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeView === 'overview' 
+              ? 'text-white font-bold bg-white/[0.08]' 
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Overview</span>
+          <span className="text-[10px] mt-0.5">Overview</span>
         </button>
 
         <button
           onClick={() => setActiveView('analytics')}
-          className={`flex flex-col items-center space-y-0.5 py-1 px-2 ${activeView === 'analytics' ? 'text-sky-400 font-semibold' : 'text-zinc-500'}`}
+          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeView === 'analytics' 
+              ? 'text-white font-bold bg-white/[0.08]' 
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span>Analytics</span>
+          <span className="text-[10px] mt-0.5">Analytics</span>
         </button>
 
         <button
           onClick={() => setActiveView('device')}
-          className={`flex flex-col items-center space-y-0.5 py-1 px-2 ${activeView === 'device' ? 'text-sky-400 font-semibold' : 'text-zinc-500'}`}
+          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeView === 'device' 
+              ? 'text-white font-bold bg-white/[0.08]' 
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
         >
           <Cpu className="w-4 h-4" />
-          <span>Device</span>
+          <span className="text-[10px] mt-0.5">Device</span>
         </button>
 
         <button
           onClick={() => setActiveView('logs')}
-          className={`flex flex-col items-center space-y-0.5 py-1 px-2 ${activeView === 'logs' ? 'text-sky-400 font-semibold' : 'text-zinc-500'}`}
+          className={`flex flex-col items-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeView === 'logs' 
+              ? 'text-white font-bold bg-white/[0.08]' 
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
         >
           <ScrollText className="w-4 h-4" />
-          <span>Logs</span>
+          <span className="text-[10px] mt-0.5">Logs</span>
         </button>
 
         <button
           onClick={() => setIsExportModalOpen(true)}
-          className="flex flex-col items-center space-y-0.5 text-amber-400 py-1 px-2 font-semibold"
+          className="flex flex-col items-center py-1 px-3 rounded-xl text-amber-400 font-semibold cursor-pointer hover:bg-amber-500/10 transition-all"
         >
           <FileText className="w-4 h-4" />
-          <span>Report</span>
+          <span className="text-[10px] mt-0.5">PDF</span>
         </button>
-      </div>
+      </nav>
 
-      {/* Minimalist Modern Footer */}
-      <footer className="border-t border-white/[0.06] bg-zinc-950/60 px-4 py-6 mt-12 text-xs text-zinc-500 font-sans">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+      {/* Minimalist Modern Footer (Desktop only) */}
+      <footer className="hidden md:block border-t border-white/[0.06] bg-zinc-950/60 px-4 py-6 mt-12 text-xs text-zinc-400 font-sans">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center space-x-2">
             <span className="w-2 h-2 bg-emerald-400 rounded-full inline-block" />
             <span className="font-medium text-zinc-300">Smart Node Telemetry</span>
             <span className="text-zinc-700">•</span>
-            <span className="text-zinc-400">DHT11 Environmental Sensor</span>
+            <span className="text-zinc-400">ESP32-S3 + DHT11</span>
           </div>
 
           <div className="flex items-center space-x-3 text-zinc-400 text-[11px]">
-            <span>Cadence: 2000ms</span>
-            <span className="text-zinc-700">•</span>
-            <span>Cloud RTDB Connected</span>
+            <span>Live RTDB Connected</span>
           </div>
         </div>
       </footer>

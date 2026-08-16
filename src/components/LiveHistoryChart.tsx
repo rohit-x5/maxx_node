@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Camera, 
   FileSpreadsheet, 
@@ -48,6 +48,7 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
   const [layoutMode, setLayoutMode] = useState<GraphLayoutMode>('split');
   const [timeRange, setTimeRange] = useState<'15m' | '1h' | '6h' | '24h' | 'all'>('1h');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const now = Date.now();
   const rangeDurations = {
@@ -90,6 +91,16 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
   const avgHum = Number((hums.reduce((a, b) => a + b, 0) / (hums.length || 1)).toFixed(1));
   const humDelta = Number((latestPoint.humidity - firstPoint.humidity).toFixed(1));
 
+  // Handle Touch Scrubbing on Mobile
+  const handleTouch = (e: React.TouchEvent<SVGSVGElement>, chartW: number, padLeft: number) => {
+    if (!e.touches[0] || points.length <= 1) return;
+    const svgRect = e.currentTarget.getBoundingClientRect();
+    const touchX = e.touches[0].clientX - svgRect.left;
+    const ratio = Math.max(0, Math.min(1, (touchX - (padLeft / 880) * svgRect.width) / ((chartW / 880) * svgRect.width)));
+    const idx = Math.round(ratio * (points.length - 1));
+    setHoveredIndex(Math.max(0, Math.min(points.length - 1, idx)));
+  };
+
   // Single Pane Chart Renderer Function
   const renderSingleChart = (
     title: string,
@@ -111,15 +122,15 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
     const Icon = icon;
     const width = 880;
     const height = 230;
-    const padLeft = 55;
-    const padRight = 35;
+    const padLeft = 48;
+    const padRight = 25;
     const padTop = 25;
     const padBottom = 35;
 
     const chartW = width - padLeft - padRight;
     const chartH = height - padTop - padBottom;
 
-    // Scale calculation with comfortable breathing margin
+    // Scale calculation
     const spread = Math.max(1.2, (maxVal - minVal) * 0.3);
     const minScale = Number((minVal - spread).toFixed(1));
     const maxScale = Number((maxVal + spread).toFixed(1));
@@ -151,74 +162,73 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
     const hoveredPt = hoveredIndex !== null && points[hoveredIndex] ? points[hoveredIndex] : null;
 
     return (
-      <div className="bg-black/35 border border-white/[0.07] p-4 sm:p-5 rounded-2xl sm:rounded-3xl space-y-3.5 shadow-xl relative">
+      <div className="bg-black/35 border border-white/[0.07] p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl space-y-3 shadow-xl relative">
         
-        {/* Header Strip with Metrics */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
-          <div className="flex items-center space-x-3">
+        {/* Header Strip with Mobile-Friendly Wrap */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-white/[0.06]">
+          <div className="flex items-center space-x-2.5">
             <div 
-              className="p-2 rounded-xl border flex items-center justify-center"
+              className="p-1.5 sm:p-2 rounded-xl border flex items-center justify-center shrink-0"
               style={{
                 backgroundColor: `${accentColor}15`,
                 borderColor: `${accentColor}30`,
                 color: accentColor,
               }}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
 
             <div>
-              <div className="flex items-center space-x-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+              <div className="flex items-center space-x-1.5 sm:space-x-2">
+                <h4 className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-zinc-300">
                   {title}
                 </h4>
-                <span className={`inline-flex items-center space-x-0.5 px-2 py-0.2 rounded-full text-[10px] font-semibold ${
+                <span className={`inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-semibold ${
                   delta > 0
                     ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     : delta < 0
                     ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
                     : 'bg-zinc-800 text-zinc-400'
                 }`}>
-                  {delta > 0 ? <ArrowUpRight className="w-3 h-3" /> : delta < 0 ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                  {delta > 0 ? <ArrowUpRight className="w-2.5 h-2.5" /> : delta < 0 ? <ArrowDownRight className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
                   <span>{delta > 0 ? `+${delta}` : delta}{valueUnit}</span>
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-400 font-sans">
+              <p className="text-[10px] sm:text-[11px] text-zinc-400 font-sans">
                 {comfortLabel}
               </p>
             </div>
           </div>
 
-          {/* Current & Range Summary Pill */}
-          <div className="flex items-center space-x-3 text-xs bg-zinc-900/80 px-3 py-1.5 rounded-xl border border-white/[0.06]">
+          {/* Current & Range Summary Pill (2x2 on Mobile, Inline on Tablet/Desktop) */}
+          <div className="grid grid-cols-4 sm:flex items-center gap-1.5 sm:space-x-3 text-[10px] sm:text-xs bg-zinc-900/80 p-2 sm:px-3 sm:py-1.5 rounded-xl border border-white/[0.06] text-center sm:text-left">
             <div>
-              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">LIVE:</span>
+              <span className="text-[9px] text-zinc-400 uppercase block sm:inline sm:mr-1">LIVE</span>
               <span className="font-bold text-white font-mono-tech">{currentVal.toFixed(1)}{valueUnit}</span>
             </div>
-            <span className="text-zinc-600">|</span>
-            <div>
-              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">MIN:</span>
+            <div className="border-l border-white/[0.06] sm:border-l-0 pl-1 sm:pl-0">
+              <span className="text-[9px] text-zinc-400 uppercase block sm:inline sm:mr-1">MIN</span>
               <span className="text-zinc-300 font-mono-tech">{minVal.toFixed(1)}{valueUnit}</span>
             </div>
-            <span className="text-zinc-600">|</span>
-            <div>
-              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">AVG:</span>
+            <div className="border-l border-white/[0.06] sm:border-l-0 pl-1 sm:pl-0">
+              <span className="text-[9px] text-zinc-400 uppercase block sm:inline sm:mr-1">AVG</span>
               <span className="text-zinc-300 font-mono-tech">{avgVal.toFixed(1)}{valueUnit}</span>
             </div>
-            <span className="text-zinc-600">|</span>
-            <div>
-              <span className="text-[10px] text-zinc-400 uppercase mr-1.5">MAX:</span>
+            <div className="border-l border-white/[0.06] sm:border-l-0 pl-1 sm:pl-0">
+              <span className="text-[9px] text-zinc-400 uppercase block sm:inline sm:mr-1">MAX</span>
               <span className="text-zinc-300 font-mono-tech">{maxVal.toFixed(1)}{valueUnit}</span>
             </div>
           </div>
         </div>
 
-        {/* SVG Canvas */}
-        <div className="relative w-full overflow-hidden">
+        {/* SVG Canvas with Mobile Touch Support */}
+        <div className="relative w-full overflow-hidden touch-none" ref={containerRef}>
           <svg
             viewBox={`0 0 ${width} ${height}`}
-            className="w-full h-52 sm:h-64 select-none"
+            className="w-full h-44 sm:h-60 select-none cursor-crosshair"
             onMouseLeave={() => setHoveredIndex(null)}
+            onTouchMove={(e) => handleTouch(e, chartW, padLeft)}
+            onTouchStart={(e) => handleTouch(e, chartW, padLeft)}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -247,8 +257,8 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                   strokeDasharray="3 3"
                 />
                 <text
-                  x={padLeft + 10}
-                  y={comfortTopY + 14}
+                  x={padLeft + 8}
+                  y={comfortTopY + 12}
                   fill="#10b981"
                   fontSize="9"
                   fontWeight="600"
@@ -274,11 +284,11 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                     strokeDasharray="3 4"
                   />
                   <text
-                    x={padLeft - 8}
+                    x={padLeft - 6}
                     y={y + 3.5}
                     textAnchor="end"
                     fill="#94a3b8"
-                    fontSize="10"
+                    fontSize="9"
                     fontWeight="500"
                     fontFamily="monospace"
                   >
@@ -301,7 +311,7 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                 strokeDasharray="4 4"
               />
               <text
-                x={padLeft + chartW - 6}
+                x={padLeft + chartW - 4}
                 y={getY(avgVal) - 4}
                 textAnchor="end"
                 fill={accentColor}
@@ -321,7 +331,7 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
               d={splinePath}
               fill="none"
               stroke={strokeColor}
-              strokeWidth="3.5"
+              strokeWidth="3"
               strokeLinecap="round"
               strokeLinejoin="round"
               className="filter drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]"
@@ -330,8 +340,8 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
             {/* Peak High Badge */}
             {points.length > 2 && maxIdx >= 0 && (
               <g transform={`translate(${coords[maxIdx].x}, ${coords[maxIdx].y - 10})`}>
-                <rect x="-24" y="-12" width="48" height="18" rx="9" fill={accentColor} />
-                <text x="0" y="0.5" textAnchor="middle" fill="#090a0f" fontSize="9" fontWeight="700">
+                <rect x="-22" y="-11" width="44" height="16" rx="8" fill={accentColor} />
+                <text x="0" y="0.5" textAnchor="middle" fill="#090a0f" fontSize="8.5" fontWeight="700">
                   ▲ {maxVal.toFixed(1)}{valueUnit}
                 </text>
               </g>
@@ -339,9 +349,9 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
 
             {/* Peak Low Badge */}
             {points.length > 2 && minIdx >= 0 && minIdx !== maxIdx && (
-              <g transform={`translate(${coords[minIdx].x}, ${coords[minIdx].y + 14})`}>
-                <rect x="-24" y="-9" width="48" height="18" rx="9" fill="#1e293b" stroke={accentColor} strokeWidth="1" />
-                <text x="0" y="3.5" textAnchor="middle" fill={accentColor} fontSize="9" fontWeight="700">
+              <g transform={`translate(${coords[minIdx].x}, ${coords[minIdx].y + 13})`}>
+                <rect x="-22" y="-8" width="44" height="16" rx="8" fill="#1e293b" stroke={accentColor} strokeWidth="1" />
+                <text x="0" y="3.5" textAnchor="middle" fill={accentColor} fontSize="8.5" fontWeight="700">
                   ▼ {minVal.toFixed(1)}{valueUnit}
                 </text>
               </g>
@@ -365,10 +375,10 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                 <circle
                   cx={pt.x}
                   cy={pt.y}
-                  r={hoveredIndex === i ? 6 : 2}
+                  r={hoveredIndex === i ? 5.5 : 1.5}
                   fill={hoveredIndex === i ? '#ffffff' : accentColor}
                   stroke={accentColor}
-                  strokeWidth={hoveredIndex === i ? 3.5 : 1}
+                  strokeWidth={hoveredIndex === i ? 3 : 1}
                   className="transition-all duration-150"
                 />
               </g>
@@ -397,7 +407,7 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
                     y={height - 10}
                     textAnchor="middle"
                     fill="#94a3b8"
-                    fontSize="10"
+                    fontSize="9"
                     fontWeight="500"
                     fontFamily="monospace"
                   >
@@ -411,13 +421,13 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
 
           {/* Floating Hover Card */}
           {hoveredPt && (
-            <div className="absolute top-2 right-2 bg-zinc-950/95 border border-white/20 p-2.5 rounded-xl font-sans text-xs shadow-2xl backdrop-blur-xl z-20 space-y-1">
-              <div className="text-[10px] text-zinc-400 flex items-center justify-between space-x-3">
+            <div className="absolute top-2 right-2 bg-zinc-950/95 border border-white/20 p-2 rounded-xl font-sans text-[11px] shadow-2xl backdrop-blur-xl z-20 space-y-0.5">
+              <div className="text-[9px] text-zinc-400 flex items-center justify-between space-x-2">
                 <span>TIME:</span>
                 <span className="text-white font-mono">{hoveredPt.timeStr}</span>
               </div>
-              <div className="flex items-center justify-between space-x-3 font-semibold" style={{ color: accentColor }}>
-                <span>{title}:</span>
+              <div className="flex items-center justify-between space-x-2 font-semibold" style={{ color: accentColor }}>
+                <span>{title.split(' ')[0]}:</span>
                 <span className="font-mono">{getValue(hoveredPt).toFixed(1)}{valueUnit}</span>
               </div>
             </div>
@@ -430,31 +440,31 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
 
   return (
     <TelemetryCard
-      title="Live Historical Telemetry & Analytics"
-      badge="Full Database Stream"
+      title="Historical Telemetry & Analytics"
+      badge="Realtime Ingestion"
       badgeVariant="emerald"
       accentColor="none"
       className="col-span-full"
     >
-      <div className="space-y-5 font-sans">
+      <div className="space-y-4 font-sans">
         
-        {/* Top Control Bar: Layout Modes, Time Horizons & Export */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-white/[0.06]">
+        {/* Top Control Bar: Scrollable on Mobile */}
+        <div className="flex flex-col gap-3 pb-3 border-b border-white/[0.06]">
           
-          {/* Layout Mode Switcher */}
-          <div className="flex items-center space-x-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08] overflow-x-auto no-scrollbar">
+          {/* Layout Mode Switcher (Horizontal Scroll Pill Bar) */}
+          <div className="flex items-center space-x-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08] overflow-x-auto no-scrollbar py-1">
             {[
-              { id: 'split', label: '📊 Dual Dedicated Charts', desc: 'Separated °C & %RH' },
-              { id: 'temp', label: '🌡️ Temperature Only', desc: 'Core thermal focus' },
-              { id: 'hum', label: '💧 Humidity Only', desc: 'Moisture focus' },
-              { id: 'combined', label: '⚡ Dual-Axis Overlay', desc: 'Synchronized view' },
+              { id: 'split', label: '📊 Dual Dedicated', desc: 'Separated °C & %RH' },
+              { id: 'temp', label: '🌡️ Temperature', desc: 'Core thermal focus' },
+              { id: 'hum', label: '💧 Humidity', desc: 'Moisture focus' },
+              { id: 'combined', label: '⚡ Dual-Axis', desc: 'Synchronized view' },
             ].map((tab) => {
               const isSelected = layoutMode === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setLayoutMode(tab.id as GraphLayoutMode)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap cursor-pointer shrink-0 ${
                     isSelected
                       ? 'bg-white text-zinc-950 font-semibold shadow-md'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04]'
@@ -466,16 +476,16 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
             })}
           </div>
 
-          {/* Time Window Tabs & Export Actions */}
-          <div className="flex items-center space-x-2">
+          {/* Time Window Tabs & Export Actions (Flex Wrap) */}
+          <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
             
             {/* Time Window Selector */}
-            <div className="flex items-center space-x-1 bg-black/40 p-1 rounded-full border border-white/[0.08]">
+            <div className="flex items-center space-x-1 bg-black/40 p-1 rounded-full border border-white/[0.08] shrink-0">
               {(['15m', '1h', '6h', '24h', 'all'] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => setTimeRange(r)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded-full transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 text-[10px] sm:text-[11px] font-medium rounded-full transition-all cursor-pointer ${
                     timeRange === r
                       ? 'bg-emerald-500 text-zinc-950 font-bold shadow-sm'
                       : 'text-zinc-400 hover:text-white'
@@ -486,35 +496,37 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
               ))}
             </div>
 
-            {/* PNG Snapshot */}
-            <button
-              onClick={() => exportHighResGraphPNG(points, timeRange)}
-              title="Snapshot high-res PNG graph"
-              className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
-            >
-              <Camera className="w-3.5 h-3.5 text-sky-400" />
-              <span className="hidden sm:inline">PNG</span>
-            </button>
+            {/* Snapshot & Export */}
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <button
+                onClick={() => exportHighResGraphPNG(points, timeRange)}
+                title="Snapshot graph as PNG"
+                className="flex items-center space-x-1 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-[11px] sm:text-xs transition-colors cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5 text-sky-400" />
+                <span>PNG</span>
+              </button>
 
-            {/* CSV Export */}
-            <button
-              onClick={() => exportCSV(points, timeRange)}
-              title="Export all database points as CSV"
-              className="flex items-center space-x-1 px-3 py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-xs transition-colors cursor-pointer"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">CSV</span>
-            </button>
+              <button
+                onClick={() => exportCSV(points, timeRange)}
+                title="Export points as CSV"
+                className="flex items-center space-x-1 px-2.5 py-1 sm:px-3 sm:py-1.5 bg-zinc-800/60 hover:bg-zinc-800 border border-white/[0.08] rounded-xl text-zinc-300 hover:text-white text-[11px] sm:text-xs transition-colors cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+                <span>CSV</span>
+              </button>
+            </div>
+
           </div>
 
         </div>
 
         {/* Dynamic Charts Area */}
-        <div className="space-y-5">
+        <div className="space-y-4">
           
-          {/* 1. Split Mode: Temperature Chart + Humidity Chart Stacked/Dual */}
+          {/* 1. Split Mode: Temperature Chart + Humidity Chart */}
           {layoutMode === 'split' && (
-            <div className="grid grid-cols-1 gap-5">
+            <div className="grid grid-cols-1 gap-4">
               {renderSingleChart(
                 'Core Temperature Timeline',
                 Thermometer,
@@ -597,35 +609,34 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
 
           {/* 4. Combined Dual-Axis Overlay Mode */}
           {layoutMode === 'combined' && (
-            <div className="bg-black/35 border border-white/[0.07] p-5 rounded-3xl space-y-4 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-white/[0.06]">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
-                    <Layers className="w-4 h-4" />
+            <div className="bg-black/35 border border-white/[0.07] p-4 sm:p-5 rounded-3xl space-y-4 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-white/[0.06]">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400">
+                    <Layers className="w-3.5 h-3.5" />
                   </div>
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-300">
                       Synchronized Dual-Axis Overlay
                     </h4>
-                    <p className="text-[11px] text-zinc-400">
+                    <p className="text-[10px] text-zinc-400">
                       Left Axis: Temperature (°C) • Right Axis: Humidity (% RH)
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-3 text-xs">
-                  <span className="flex items-center space-x-1.5 text-amber-400 font-semibold">
+                <div className="flex items-center space-x-2 text-[10px] sm:text-xs">
+                  <span className="flex items-center space-x-1 text-amber-400 font-semibold">
                     <span className="w-2 h-2 rounded-full bg-amber-400" />
                     <span>Temp ({latestPoint.temperature.toFixed(1)}°C)</span>
                   </span>
-                  <span className="flex items-center space-x-1.5 text-sky-400 font-semibold">
+                  <span className="flex items-center space-x-1 text-sky-400 font-semibold">
                     <span className="w-2 h-2 rounded-full bg-sky-400" />
                     <span>Humidity ({latestPoint.humidity.toFixed(1)}%)</span>
                   </span>
                 </div>
               </div>
 
-              {/* Combined View renders both curves simultaneously */}
               <div className="grid grid-cols-1 gap-4">
                 {renderSingleChart(
                   'Core Temperature Stream',
@@ -667,28 +678,28 @@ export const LiveHistoryChart: React.FC<LiveHistoryChartProps> = ({ history }) =
 
         </div>
 
-        {/* Database Telemetry Health & Sampling Summary Footer */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-white/[0.06] text-xs">
-          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
-            <Database className="w-4 h-4 text-emerald-400 shrink-0" />
+        {/* Database Health Summary Footer (Grid 3-block on desktop, compact on mobile) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-2 sm:pt-3 border-t border-white/[0.06] text-[11px] sm:text-xs">
+          <div className="bg-black/25 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-white/[0.04] flex items-center space-x-2">
+            <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <div>
-              <div className="text-[10px] uppercase text-zinc-400">Total Telemetry Samples</div>
+              <div className="text-[9px] uppercase text-zinc-400">Total Samples</div>
               <div className="text-white font-semibold">{points.length} Database Records</div>
             </div>
           </div>
 
-          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
-            <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+          <div className="bg-black/25 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-white/[0.04] flex items-center space-x-2">
+            <Sparkles className="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <div>
-              <div className="text-[10px] uppercase text-zinc-400">Sampling Cadence</div>
+              <div className="text-[9px] uppercase text-zinc-400">Cadence</div>
               <div className="text-white font-semibold">2000ms Live Ingestion</div>
             </div>
           </div>
 
-          <div className="bg-black/25 p-3 rounded-2xl border border-white/[0.04] flex items-center space-x-2.5">
-            <Thermometer className="w-4 h-4 text-amber-400 shrink-0" />
+          <div className="bg-black/25 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-white/[0.04] flex items-center space-x-2">
+            <Thermometer className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <div>
-              <div className="text-[10px] uppercase text-zinc-400">Firebase Synchronization</div>
+              <div className="text-[9px] uppercase text-zinc-400">Firebase Synchronization</div>
               <div className="text-emerald-400 font-semibold">100% Real-Time Connected</div>
             </div>
           </div>
